@@ -1,8 +1,5 @@
-from __future__ import annotations
-
+import re
 from dataclasses import dataclass
-from typing import Any
-
 import requests
 
 
@@ -16,97 +13,109 @@ class Finding:
 
 
 def scan_target(url: str, timeout_seconds: int, user_agent: str) -> list[Finding]:
-    """Lightweight MVP scanner (HTTP-based).
-
-    This is intentionally simple to be deployable anywhere.
-
-    Later we can replace/extend with WPScan, Nuclei, etc.
-    """
-
+    """Enhanced WordPress scanner."""
     findings: list[Finding] = []
-
     headers = {"User-Agent": user_agent}
 
     # 1) Basic reachability
     try:
         r = requests.get(url, timeout=timeout_seconds, headers=headers, allow_redirects=True)
+        r.raise_for_status()
     except requests.RequestException as e:
         findings.append(
             Finding(
                 severity="high",
                 title="Target not reachable",
-                description="The target URL could not be reached.",
+                description="The target URL could not be reached or returned an error.",
                 evidence=str(e),
-                recommendation="Verify the domain resolves and the server is reachable from the internet.",
+                recommendation="Verify the domain resolves and the server is reachable.",
             )
         )
         return findings
 
-    findings.append(
-        Finding(
-            severity="info",
-            title="Target reachable",
-            description=f"HTTP {r.status_code} received.",
-            evidence=f"Final URL: {r.url}",
-        )
-    )
+    findings.append(Finding(severity="info", title="Target reachable", evidence=f"Final URL: {r.url} (HTTP {r.status_code})"))
 
-    # 2) WordPress heuristics
-    body_lower = (r.text or "").lower()
-    if "wp-content" in body_lower or "wp-includes" in body_lower:
+    body = r.text
+    body_lower = body.lower()
+
+    # 2) WordPress Version Detection
+    wp_version = None
+    # Meta generator tag
+    meta_gen = re.search(r'<meta name="generator" content="WordPress ([\d.]+)"', body)
+    if meta_gen:
+        wp_version = meta_gen.group(1)
+        findings.append(Finding(severity="info", title=f"WordPress version detected: {wp_version}", evidence="Found in meta generator tag."))
+    
+    # Check for /readme.html
+    try:
+        readme = requests.get(url.rstrip("/") + "/readme.html", timeout=5, headers=headers)
+        if readme.status_code == 200:
+            version_match = re.search(r"<br />\s*Version ([\d.]+)", readme.text)
+            if version_match:
+                found_v = version_match.group(1)
+                if not wp_version or found_v != wp_version:
+                    wp_version = found_v
+                    findings.append(Finding(severity="info", title=f"WordPress version found in readme.html: {wp_version}"))
+            findings.append(Finding(severity="low", title="Public readme.html found", description="Exposing readme.html can reveal the WordPress version.", recommendation="Delete readme.html or restrict access."))
+    except: pass
+
+    # 3) Theme Detection
+    theme_match = re.search(r"/wp-content/themes/([^/]+)/", body)
+    if theme_match:
+        theme_name = theme_match.group(1)
+        findings.append(Finding(severity="info", title=f"Active theme detected: {theme_name}"))
+
+    # 4) Plugin Detection
+    # Scan for common plugins in HTML
+    plugins = set(re.findall(r"/wp-content/plugins/([^/]+)/", body))
+    if plugins:
         findings.append(
             Finding(
                 severity="info",
-                title="WordPress footprint detected",
-                description="The page content contains typical WordPress paths.",
-                evidence="Found wp-content/wp-includes in HTML.",
-            )
-        )
-    else:
-        findings.append(
-            Finding(
-                severity="low",
-                title="No obvious WordPress footprint",
-                description="No wp-content/wp-includes strings found in the HTML.",
-                recommendation="If this is a WordPress site, it may be hidden behind caching/WAF or using a headless setup.",
+                title=f"Detected {len(plugins)} plugins",
+                description="The following plugins were identified in the page source.",
+                evidence=", ".join(list(plugins)[:10]) + ("..." if len(plugins) > 10 else ""),
             )
         )
 
-    # 3) Exposed REST users endpoint
+    # 5) Sensitive Files & Endpoints
+    # Check for xmlrpc.php
     try:
-        users = requests.get(
-            url.rstrip("/") + "/wp-json/wp/v2/users",
-            timeout=timeout_seconds,
-            headers=headers,
-            allow_redirects=True,
-        )
-        if users.status_code == 200 and users.headers.get("content-type", "").lower().startswith("application/json"):
+        xmlrpc = requests.get(url.rstrip("/") + "/xmlrpc.php", timeout=5, headers=headers)
+        if xmlrpc.status_code == 405 or "XML-RPC server accepts POST requests only" in xmlrpc.text:
+            findings.append(
+                Finding(
+                    severity="low",
+                    title="XML-RPC enabled",
+                    description="XML-RPC can be used for DDoS and brute-force attacks.",
+                    recommendation="Disable XML-RPC if not needed or restrict access.",
+                )
+            )
+    except: pass
+
+    # 6) Exposed REST users endpoint
+    try:
+        users = requests.get(url.rstrip("/") + "/wp-json/wp/v2/users", timeout=5, headers=headers)
+        if users.status_code == 200 and "application/json" in users.headers.get("Content-Type", "").lower():
             findings.append(
                 Finding(
                     severity="medium",
-                    title="Possible user enumeration via REST API",
-                    description="The WordPress REST users endpoint returned JSON.",
-                    evidence=f"GET /wp-json/wp/v2/users -> {users.status_code}",
-                    recommendation="Restrict user endpoints or require authentication. Consider security plugins or custom rules.",
+                    title="User enumeration via REST API",
+                    description="The WordPress REST users endpoint returned JSON data.",
+                    evidence=f"GET /wp-json/wp/v2/users returned 200",
+                    recommendation="Restrict access to the REST API users endpoint.",
                 )
             )
-    except requests.RequestException:
-        pass
+    except: pass
 
-    # 4) Missing security headers
-    headers_lower: dict[str, Any] = {k.lower(): v for k, v in r.headers.items()}
-    for header, severity, recommendation in [
-        ("content-security-policy", "medium", "Add a Content-Security-Policy to reduce XSS risk."),
-        ("x-frame-options", "low", "Add X-Frame-Options or frame-ancestors to reduce clickjacking risk."),
-        ("strict-transport-security", "low", "Enable HSTS if the site is served over HTTPS."),
+    # 7) Security Headers
+    headers_lower = {k.lower(): v for k, v in r.headers.items()}
+    for header, severity, rec in [
+        ("content-security-policy", "medium", "Add a Content-Security-Policy header."),
+        ("x-frame-options", "low", "Add X-Frame-Options or frame-ancestors."),
+        ("strict-transport-security", "low", "Enable HSTS if using HTTPS."),
     ]:
         if header not in headers_lower:
-            findings.append(
-                Finding(
-                    severity=severity,
-                    title=f"Missing security header: {header}",
-                    recommendation=recommendation,
-                )
-            )
+            findings.append(Finding(severity=severity, title=f"Missing security header: {header}", recommendation=rec))
 
     return findings
