@@ -4,6 +4,9 @@
 > It does NOT need Traefik/HTTP routing, domain, or SSL certificates.
 > It only needs `DATABASE_URL` to connect to Supabase.
 
+> [!CAUTION]
+> **Use the IPv4 Pooler (Port 6543)**. Direct connections (Port 5432) in Supabase often use IPv6, which may be "Unreachable" in many Docker/Coolify setups.
+
 ## Step 1: Get your Supabase Connection String
 
 1. Go to **Supabase Dashboard** → **Project Settings** → **Database**
