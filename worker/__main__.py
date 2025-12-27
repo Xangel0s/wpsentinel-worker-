@@ -48,8 +48,8 @@ def main():
         return
 
     while True:
-        with get_conn() as conn:
-            try:
+        try:
+            with get_conn() as conn:
                 job = take_one_job(conn)
                 if not job:
                     conn.commit()
@@ -76,20 +76,10 @@ def main():
                 conn.commit()
                 logger.info(f"✅ Scan {job.id[:8]} completed: {vulns} vulnerabilities found")
 
-            except Exception as e:
-                logger.error(f"❌ Scan failed: {e}")
-                # Best-effort: if we have a job in-process, it has already been marked running
-                # and should be marked failed.
-                try:
-                    if "job" in locals() and locals()["job"] is not None:
-                        mark_failed(conn, scan_id=locals()["job"].id, error_message=str(e))
-                        conn.commit()
-                        logger.warning(f"   Marked scan {locals()['job'].id[:8]} as failed")
-                except Exception as inner_e:
-                    logger.error(f"   Could not mark scan as failed: {inner_e}")
-                    conn.rollback()
-
-                time.sleep(poll_interval)
+        except Exception as e:
+            logger.error(f"❌ Worker error: {e}")
+            # If it's a connection error, just wait and retry
+            time.sleep(poll_interval)
 
 
 if __name__ == "__main__":
