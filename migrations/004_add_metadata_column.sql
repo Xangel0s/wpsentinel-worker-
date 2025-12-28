@@ -16,6 +16,11 @@ BEGIN
   END IF;
 END $$;
 
+-- Update existing rows to use valid status values
+UPDATE public.scans 
+SET status = 'pending' 
+WHERE status NOT IN ('pending', 'in_progress', 'completed', 'failed');
+
 -- Update constraint to include 'completed' status
 DO $$
 BEGIN
