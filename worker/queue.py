@@ -13,13 +13,13 @@ TAKE_JOB_SQL = """
 WITH next_job AS (
   SELECT id, target_url
   FROM public.scans
-  WHERE status = 'queued'
+  WHERE status = 'pending'
   ORDER BY created_at ASC
   FOR UPDATE SKIP LOCKED
   LIMIT 1
 )
 UPDATE public.scans s
-SET status = 'running',
+SET status = 'in_progress',
     started_at = NOW(),
     error_message = NULL
 FROM next_job

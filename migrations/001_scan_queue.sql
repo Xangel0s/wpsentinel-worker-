@@ -1,5 +1,5 @@
 ALTER TABLE public.scans
-  ADD COLUMN IF NOT EXISTS status text NOT NULL DEFAULT 'queued',
+  ADD COLUMN IF NOT EXISTS status text NOT NULL DEFAULT 'pending',
   ADD COLUMN IF NOT EXISTS started_at timestamp with time zone,
   ADD COLUMN IF NOT EXISTS finished_at timestamp with time zone,
   ADD COLUMN IF NOT EXISTS error_message text;
@@ -13,7 +13,7 @@ BEGIN
   ) THEN
     ALTER TABLE public.scans
       ADD CONSTRAINT scans_status_check
-      CHECK (status IN ('queued', 'running', 'succeeded', 'failed'));
+      CHECK (status IN ('pending', 'in_progress', 'succeeded', 'failed'));
   END IF;
 END $$;
 
