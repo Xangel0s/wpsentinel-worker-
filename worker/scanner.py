@@ -88,12 +88,14 @@ def scan_target(url: str, timeout_seconds: int, user_agent: str) -> tuple[list[F
     theme_match = re.search(r"/wp-content/themes/([^/]+)/", body)
     if theme_match:
         theme_name = theme_match.group(1)
+        metrics.themes_analyzed = 1
         findings.append(Finding(severity="info", title=f"Active theme detected: {theme_name}"))
 
     # 4) Plugin Detection
     # Scan for common plugins in HTML (only alphanumeric, hyphens, and underscores)
     plugins = set(re.findall(r"/wp-content/plugins/([a-zA-Z0-9\-_]+)/", body))
     if plugins:
+        metrics.plugins_analyzed = len(plugins)
         findings.append(
             Finding(
                 severity="info",
