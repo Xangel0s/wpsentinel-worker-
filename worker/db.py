@@ -17,7 +17,11 @@ def get_database_url() -> str:
 
 @contextmanager
 def get_conn():
-    conn = psycopg.connect(get_database_url(), autocommit=False)
+    conn = psycopg.connect(
+        get_database_url(), 
+        autocommit=False,
+        prepare_threshold=0  # Disable prepared statement caching
+    )
     try:
         yield conn
     finally:
