@@ -57,7 +57,7 @@ def main():
                     continue
 
                 logger.info(f"📋 Processing scan {job.id[:8]}... → {job.target_url}")
-                findings = scan_target(job.target_url, timeout_seconds=timeout_seconds, user_agent=user_agent)
+                findings, metrics = scan_target(job.target_url, timeout_seconds=timeout_seconds, user_agent=user_agent)
 
                 for f in findings:
                     insert_finding(
@@ -72,7 +72,7 @@ def main():
 
                 # Count anything that isn't informational
                 vulns = sum(1 for f in findings if f.severity in {"low", "medium", "high", "critical"})
-                mark_succeeded(conn, scan_id=job.id, vulnerabilities_count=vulns)
+                mark_succeeded(conn, scan_id=job.id, vulnerabilities_count=vulns, metrics_dict=metrics.to_dict())
                 conn.commit()
                 logger.info(f"✅ Scan {job.id[:8]} completed: {vulns} vulnerabilities found")
 
