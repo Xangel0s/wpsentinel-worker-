@@ -1,5 +1,8 @@
 import re
-from dataclasses import dataclass
+import json
+import time
+from dataclasses import dataclass, asdict
+from typing import Dict, Any
 import requests
 
 
@@ -12,8 +15,30 @@ class Finding:
     recommendation: str | None = None
 
 
-def scan_target(url: str, timeout_seconds: int, user_agent: str) -> list[Finding]:
+@dataclass
+class ScanMetrics:
+    start_time: int
+    plugins_analyzed: int = 0
+    themes_analyzed: int = 0
+    endpoints_checked: int = 0
+    vulnerabilities_found: int = 0
+    no_new_findings_count: int = 0
+    last_findings_count: int = 0
+    
+    def to_dict(self) -> Dict[str, Any]:
+        return {
+            'scan_duration': time.time() * 1000 - self.start_time,
+            'plugins_analyzed': self.plugins_analyzed,
+            'themes_analyzed': self.themes_analyzed,
+            'endpoints_checked': self.endpoints_checked,
+            'vulnerabilities_found': self.vulnerabilities_found,
+            'no_new_findings_count': self.no_new_findings_count
+        }
+
+
+def scan_target(url: str, timeout_seconds: int, user_agent: str) -> tuple[list[Finding], ScanMetrics]:
     """Enhanced WordPress scanner."""
+    metrics = ScanMetrics(start_time=int(time.time() * 1000))
     findings: list[Finding] = []
     headers = {"User-Agent": user_agent}
 
@@ -31,7 +56,7 @@ def scan_target(url: str, timeout_seconds: int, user_agent: str) -> list[Finding
                 recommendation="Verify the domain resolves and the server is reachable.",
             )
         )
-        return findings
+        return findings, metrics
 
     findings.append(Finding(severity="info", title="Target reachable", evidence=f"Final URL: {r.url} (HTTP {r.status_code})"))
 
@@ -117,5 +142,9 @@ def scan_target(url: str, timeout_seconds: int, user_agent: str) -> list[Finding
     ]:
         if header not in headers_lower:
             findings.append(Finding(severity=severity, title=f"Missing security header: {header}", recommendation=rec))
+            metrics.endpoints_checked += 1
 
-    return findings
+    # Update metrics with final counts
+    metrics.vulnerabilities_found = sum(1 for f in findings if f.severity in {"low", "medium", "high", "critical"})
+    
+    return findings, metrics

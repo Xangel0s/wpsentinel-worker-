@@ -36,7 +36,7 @@ def main():
     logger.info(f"   Poll interval: {poll_interval}s | Timeout: {timeout_seconds}s")
 
     if test_url:
-        findings = scan_target(test_url, timeout_seconds=timeout_seconds, user_agent=user_agent)
+        findings, metrics = scan_target(test_url, timeout_seconds=timeout_seconds, user_agent=user_agent)
         for f in findings:
             print(f"[{f.severity.upper()}] {f.title}")
             if f.description:

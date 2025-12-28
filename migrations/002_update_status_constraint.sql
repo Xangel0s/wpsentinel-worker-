@@ -29,6 +29,6 @@ ALTER TABLE public.scans
   CHECK (status IN ('pending', 'in_progress', 'succeeded', 'failed'));
 
 -- Verify the constraint
-SELECT conname, consrc 
+SELECT conname, pg_get_constraintdef(oid) 
 FROM pg_constraint 
 WHERE conname = 'scans_status_check';

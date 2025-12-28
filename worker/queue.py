@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import json
 from dataclasses import dataclass
 
 
@@ -37,18 +38,31 @@ def take_one_job(conn) -> ScanJob | None:
         return ScanJob(id=row[0], target_url=row[1])
 
 
-def mark_succeeded(conn, scan_id: str, vulnerabilities_count: int):
+def mark_succeeded(conn, scan_id: str, vulnerabilities_count: int, metrics_dict: dict | None = None):
     with conn.cursor() as cur:
-        cur.execute(
-            """
-            UPDATE public.scans
-            SET status = 'succeeded',
-                finished_at = NOW(),
-                vulnerabilities_count = %s
-            WHERE id = %s
-            """,
-            (vulnerabilities_count, scan_id),
-        )
+        if metrics_dict:
+            cur.execute(
+                """
+                UPDATE public.scans
+                SET status = 'completed',
+                    finished_at = NOW(),
+                    vulnerabilities_count = %s,
+                    metadata = %s
+                WHERE id = %s
+                """,
+                (vulnerabilities_count, json.dumps(metrics_dict), scan_id),
+            )
+        else:
+            cur.execute(
+                """
+                UPDATE public.scans
+                SET status = 'completed',
+                    finished_at = NOW(),
+                    vulnerabilities_count = %s
+                WHERE id = %s
+                """,
+                (vulnerabilities_count, scan_id),
+            )
 
 
 def mark_failed(conn, scan_id: str, error_message: str):
