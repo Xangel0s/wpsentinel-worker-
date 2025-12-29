@@ -24,6 +24,14 @@ class ScanMetrics:
     vulnerabilities_found: int = 0
     no_new_findings_count: int = 0
     last_findings_count: int = 0
+    plugins_list: list[dict] = None
+    endpoints_list: list[dict] = None
+    
+    def __post_init__(self):
+        if self.plugins_list is None:
+            self.plugins_list = []
+        if self.endpoints_list is None:
+            self.endpoints_list = []
     
     def to_dict(self) -> Dict[str, Any]:
         return {
@@ -32,7 +40,9 @@ class ScanMetrics:
             'themes_analyzed': self.themes_analyzed,
             'endpoints_checked': self.endpoints_checked,
             'vulnerabilities_found': self.vulnerabilities_found,
-            'no_new_findings_count': self.no_new_findings_count
+            'no_new_findings_count': self.no_new_findings_count,
+            'plugins_list': self.plugins_list,
+            'endpoints_list': self.endpoints_list
         }
 
 
@@ -96,6 +106,20 @@ def scan_target(url: str, timeout_seconds: int, user_agent: str) -> tuple[list[F
     plugins = set(re.findall(r"/wp-content/plugins/([a-zA-Z0-9\-_]+)/", body))
     if plugins:
         metrics.plugins_analyzed = len(plugins)
+        
+        # Analyze each plugin for vulnerability level
+        for plugin in plugins:
+            vulnerability_level = "Medium"  # Default
+            if any(word in plugin.lower() for word in ['contact', 'form', 'mail']):
+                vulnerability_level = "High"
+            elif any(word in plugin.lower() for word in ['woocommerce', 'ecommerce', 'shop']):
+                vulnerability_level = "Critical"
+            
+            metrics.plugins_list.append({
+                "name": plugin,
+                "vulnerability_level": vulnerability_level
+            })
+        
         findings.append(
             Finding(
                 severity="info",
@@ -118,6 +142,11 @@ def scan_target(url: str, timeout_seconds: int, user_agent: str) -> tuple[list[F
                     recommendation="Disable XML-RPC if not needed or restrict access.",
                 )
             )
+            metrics.endpoints_list.append({
+                "url": "/xmlrpc.php",
+                "risk": "Medium"
+            })
+            metrics.endpoints_checked += 1
     except: pass
 
     # 6) Exposed REST users endpoint
@@ -133,6 +162,11 @@ def scan_target(url: str, timeout_seconds: int, user_agent: str) -> tuple[list[F
                     recommendation="Restrict access to the REST API users endpoint.",
                 )
             )
+            metrics.endpoints_list.append({
+                "url": "/wp-json/wp/v2/users",
+                "risk": "High"
+            })
+            metrics.endpoints_checked += 1
     except: pass
 
     # 7) Security Headers
