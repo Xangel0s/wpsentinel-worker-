@@ -35,7 +35,7 @@ def take_one_job(conn) -> ScanJob | None:
         row = cur.fetchone()
         if not row:
             return None
-        return ScanJob(id=row[0], target_url=row[1])
+        return ScanJob(id=row['id'], target_url=row['target_url'])
 
 
 def mark_succeeded(conn, scan_id: str, vulnerabilities_count: int, metrics_dict: dict | None = None):

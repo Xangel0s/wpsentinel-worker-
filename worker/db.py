@@ -20,9 +20,13 @@ def get_conn():
     conn = psycopg.connect(
         get_database_url(), 
         autocommit=False,
-        prepare_threshold=0  # Disable prepared statement caching
+        prepare_threshold=0,  # Disable prepared statement caching
+        row_factory=psycopg.rows.dict_row
     )
     try:
         yield conn
+    except Exception:
+        conn.rollback()
+        raise
     finally:
         conn.close()
