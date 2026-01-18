@@ -49,32 +49,28 @@ def main():
 
     while True:
         try:
-            with get_conn() as conn:
-                job = take_one_job(conn)
-                if not job:
-                    conn.commit()
-                    time.sleep(poll_interval)
-                    continue
+            job = take_one_job()
+            if not job:
+                time.sleep(poll_interval)
+                continue
 
-                logger.info(f"📋 Processing scan {job.id[:8]}... → {job.target_url}")
-                findings, metrics = scan_target(job.target_url, timeout_seconds=timeout_seconds, user_agent=user_agent)
+            logger.info(f"📋 Processing scan {job.id[:8]}... → {job.target_url}")
+            findings, metrics = scan_target(job.target_url, timeout_seconds=timeout_seconds, user_agent=user_agent)
 
-                for f in findings:
-                    insert_finding(
-                        conn,
-                        scan_id=job.id,
-                        severity=f.severity,
-                        title=f.title,
-                        description=f.description,
-                        evidence=f.evidence,
-                        recommendation=f.recommendation,
-                    )
+            for f in findings:
+                insert_finding(
+                    scan_id=job.id,
+                    severity=f.severity,
+                    title=f.title,
+                    description=f.description,
+                    evidence=f.evidence,
+                    recommendation=f.recommendation,
+                )
 
-                # Count anything that isn't informational
-                vulns = sum(1 for f in findings if f.severity in {"low", "medium", "high", "critical"})
-                mark_succeeded(conn, scan_id=job.id, vulnerabilities_count=vulns, metrics_dict=metrics.to_dict())
-                conn.commit()
-                logger.info(f"✅ Scan {job.id[:8]} completed: {vulns} vulnerabilities found")
+            # Count anything that isn't informational
+            vulns = sum(1 for f in findings if f.severity in {"low", "medium", "high", "critical"})
+            mark_succeeded(scan_id=job.id, vulnerabilities_count=vulns, metrics_dict=metrics.to_dict())
+            logger.info(f"✅ Scan {job.id[:8]} completed: {vulns} vulnerabilities found")
 
         except Exception as e:
             logger.error(f"❌ Worker error: {e}")
